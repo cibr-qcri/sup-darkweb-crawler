@@ -44,9 +44,9 @@ class TorSpider(RedisSpider):
         soup = BeautifulSoup(response.text, "lxml")
         url_links = set(self.helper.unify(urljoin(url, a.get("href"))) for a in soup.find_all("a"))
 
+        domain = self.helper.get_domain(url)
+        domain_key = domain.replace('.onion', '.sup')
         if ONION_PAT.match(response.url) and 'Onion.pet acts as a proxy' not in soup.text:
-            domain = self.helper.get_domain(url)
-            domain_key = domain.replace('.onion', '.sup')
             domain_first = self.server.sadd('sup-domains', domain_key)
             self.server.sadd(domain_key, url)
 
@@ -73,22 +73,21 @@ class TorSpider(RedisSpider):
 
             yield item
 
-            if ONION_PAT.match(response.url):
-                for u in sorted(url_links):
-                    domain_count = self.server.scard(domain_key)
-                    if domain_count >= 5:
-                        break
-                    if ONION_PAT.match(u) and u != url:
-                        u = u.replace("onion.link", "onion")
-                        u = u.replace("onion.ws", "onion")
-                        u = u.replace("onion.pet", "onion")
-                        if self.helper.get_domain(u) == domain:
-                            self.server.sadd(domain_key, u)
-                            yield scrapy.Request(u, dont_filter=False, callback=self.parse, errback=self.handle_error)
-                        else:
-                            d = self.helper.get_domain(u).replace('.onion', '.sup')
-                            self.server.sadd(d, u)
-                            yield scrapy.Request(u, dont_filter=False, callback=self.parse, errback=self.handle_error)
+        for u in sorted(url_links):
+            domain_count = self.server.scard(domain_key)
+            if domain_count >= 50:
+                break
+            if ONION_PAT.match(u) and u != url:
+                u = u.replace("onion.link", "onion")
+                u = u.replace("onion.ws", "onion")
+                u = u.replace("onion.pet", "onion")
+                if self.helper.get_domain(u) == domain:
+                    self.server.sadd(domain_key, u)
+                else:
+                    d = self.helper.get_domain(u).replace('.onion', '.sup')
+                    self.server.sadd(d, u)
+                    u = self.helper.unify(self.helper.get_domain(u))
+                yield scrapy.Request(u, dont_filter=False, callback=self.parse, errback=self.handle_error)
 
     def handle_error(self, failure):
         self.logger.debug(repr(failure))
