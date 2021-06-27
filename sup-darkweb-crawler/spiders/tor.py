@@ -39,6 +39,16 @@ class TorSpider(RedisSpider):
     '''
 
     def parse(self, response):
+        def is_home_page(url):
+            domain = self.helper.get_domain(url)
+            d_url = "http://" + domain
+            url = url.split('?')[0]
+            url = url.split('#')[0]
+            url = url.strip('/')
+            for term in ["", "/index.html", "/index.php", "/index", "/home", "/home.html", "/home.php"]:
+                if url == d_url + term:
+                    return True
+            return False
         url = self.helper.unify(response.url)
 
         soup = BeautifulSoup(response.text, "lxml")
@@ -47,7 +57,7 @@ class TorSpider(RedisSpider):
         domain = self.helper.get_domain(url)
         domain_key = domain.replace('.onion', '.sup')
         if ONION_PAT.match(response.url) and 'Onion.pet acts as a proxy' not in soup.text:
-            domain_first = self.server.sadd('sup-domains', domain_key)
+            self.server.sadd('sup-domains', domain_key)
             self.server.sadd(domain_key, url)
 
             external_links_tor = list()
@@ -58,7 +68,7 @@ class TorSpider(RedisSpider):
             item['url'] = url
             item['domain'] = domain
             item['title'] = soup.title.string.strip() if soup.title and soup.title.string else ""
-            item["is_landing_page"] = domain_first > 0
+            item["is_landing_page"] = is_home_page(url)
             for u in url_links:
                 u = u.replace("onion.link", "onion")
                 u = u.replace("onion.ws", "onion")
